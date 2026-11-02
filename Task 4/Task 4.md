@@ -14,10 +14,50 @@ Appropriate data types and NOT NULL constraints.
 Please add your SQL query below AND add an explanation: 
 
 ```
-[Insert Code Here]
-```
-```
-[Insert Explanation Here]
-```
+
+CREATE TABLE Customers (
+    CustomerID   NCHAR(5)      NOT NULL PRIMARY KEY,
+    CompanyName  NVARCHAR(40)  NOT NULL
+);
+
+CREATE TABLE Employees (
+    EmployeeID  INT           NOT NULL PRIMARY KEY,
+    FirstName   NVARCHAR(10)  NOT NULL,
+    LastName    NVARCHAR(20)  NOT NULL
+);
+
+CREATE TABLE Orders (
+    OrderID     INT       NOT NULL PRIMARY KEY,
+    CustomerID  NCHAR(5)  NOT NULL FOREIGN KEY REFERENCES Customers(CustomerID),
+    EmployeeID  INT       NOT NULL FOREIGN KEY REFERENCES Employees(EmployeeID),
+    OrderDate   DATETIME  NOT NULL
+);
+
+
+Explanation
+
+Three tables from Northwind: Customers, Employees, and Orders. Each has a primary key that uniquely identifies every row. Orders has two foreign keys linking each order to the customer who placed it and the employee who handled it. Data types fit the data (INT for IDs, NVARCHAR for text, DATETIME for dates), and NOT NULL makes every column required.
+
+
+erDiagram
+    CUSTOMERS ||--o{ ORDERS : places
+    EMPLOYEES ||--o{ ORDERS : handles
+
+    CUSTOMERS {
+        nchar(5) CustomerID PK
+        nvarchar(40) CompanyName
+    }
+    EMPLOYEES {
+        int EmployeeID PK
+        nvarchar(10) FirstName
+        nvarchar(20) LastName
+    }
+    ORDERS {
+        int OrderID PK
+        nchar(5) CustomerID FK
+        int EmployeeID FK
+        datetime OrderDate
+    }
+
 
 4. For submission, commit and push.
