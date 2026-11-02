@@ -1,67 +1,115 @@
+using System;
+using System.IO;
+using System.Net.Http;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 class Program
 {
-    static async Task Main(string[] args)
-    {
-        await ApiFetch();
-    }
+    private static readonly HttpClient Client = new HttpClient();
 
-    static async Task ApiFetch()
+    static async Task Main()
     {
         try
         {
-            using (HttpClient client = new HttpClient())
-            {
-                // Read from .env file
-                string baseUrl = GetEnvironmentVariableFromDotEnv("API_BASE_URL") ?? "";
-                string url = baseUrl;
-                
-                HttpResponseMessage response = await client.GetAsync(url);
-                
-                if (!response.IsSuccessStatusCode)
-                    throw new Exception($"HTTP error! Status: {response.StatusCode}");
+            string url = GetApiBaseUrl();
+            using HttpResponseMessage response = await Client.GetAsync(url);
+            response.EnsureSuccessStatusCode();
 
-                string json = await response.Content.ReadAsStringAsync();
-                JsonDocument doc = JsonDocument.Parse(json);
-                
-                Console.WriteLine("First Post Title: " + doc.RootElement[0].GetProperty("title").GetString());
-                
-                doc.Dispose();
+            await using Stream responseStream = await response.Content.ReadAsStreamAsync();
+            using JsonDocument document = await JsonDocument.ParseAsync(responseStream);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new JsonException("The API response was not a JSON array.");
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error: " + ex.Message);
-        }
-    }
-    
-    // Code to pull straight from .env file
-    static string GetEnvironmentVariableFromDotEnv(string variableName)
-    {
-        try
-        {
-            // Look for .env file in the current directory
-            string envFilePath = Path.Combine(Directory.GetCurrentDirectory(), "Task 3/.env");
-            
-            if (File.Exists(envFilePath))
+
+            foreach (JsonElement post in document.RootElement.EnumerateArray())
             {
-                string[] lines = File.ReadAllLines(envFilePath);
-                
-                foreach (string line in lines)
+                if (post.TryGetProperty("title", out JsonElement title) &&
+                    title.ValueKind == JsonValueKind.String)
                 {
-                    if (line.StartsWith(variableName + "="))
-                    {
-                        return line.Substring(variableName.Length + 1);
-                    }
+                    Console.WriteLine(title.GetString());
                 }
             }
         }
-        catch
+        catch (HttpRequestException ex)
         {
-            // If there's any error reading the file, just return null
+            Console.Error.WriteLine($"API request failed: {ex.Message}");
         }
-        
+        catch (JsonException ex)
+        {
+            Console.Error.WriteLine($"Could not parse the API response: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            Console.Error.WriteLine($"Could not read configuration or response data: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"Configuration error: {ex.Message}");
+        }
+    }
+
+    private static string GetApiBaseUrl()
+    {
+        string? url = Environment.GetEnvironmentVariable("API_BASE_URL");
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            url = ReadDotEnvValue("API_BASE_URL");
+        }
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new InvalidOperationException(
+                "API_BASE_URL was not found in the environment or a .env file.");
+        }
+
+        url = url.Trim();
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("API_BASE_URL must be an absolute HTTP or HTTPS URL.");
+        }
+
+        return uri.ToString();
+    }
+
+    private static string? ReadDotEnvValue(string variableName)
+    {
+        string currentDirectory = Directory.GetCurrentDirectory();
+        string[] possiblePaths =
+        {
+            Path.Combine(currentDirectory, ".env"),
+            Path.Combine(currentDirectory, "Task 3", ".env")
+        };
+
+        foreach (string path in possiblePaths)
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            foreach (string line in File.ReadLines(path))
+            {
+                string trimmedLine = line.Trim();
+                if (trimmedLine.Length == 0 || trimmedLine.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int separatorIndex = trimmedLine.IndexOf('=');
+                if (separatorIndex < 0 ||
+                    !trimmedLine[..separatorIndex].Trim().Equals(variableName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                return trimmedLine[(separatorIndex + 1)..].Trim().Trim('"', '\'');
+            }
+        }
+
         return null;
     }
 }
